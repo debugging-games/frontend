@@ -17,6 +17,7 @@ system_col_map.set("PlayStation", "w3-hover-gray");
 system_col_map.set("PlayStation 2", "w3-hover-indigo");
 system_col_map.set("PlayStation 4", "w3-hover-blue");
 system_col_map.set("3DS", "w3-hover-red");
+system_col_map.set("Switch", "w3-hover-red");
 system_col_map.set("Android", "w3-hover-green");
 system_col_map.set("Xbox", "w3-hover-green");
 system_col_map.set("Xbox 360", "w3-hover-green");
@@ -46,9 +47,9 @@ function has_system(name)
 
 function prettify_bytes(bytes)
 {
-    let kb = bytes / 1024;
-    let mb = kb / 1024;
-    let gb = mb / 1024;
+    let kb = bytes / 1000;
+    let mb = kb / 1000;
+    let gb = mb / 1000;
 
     if(gb >= 1)
     {
@@ -125,17 +126,35 @@ http.get([`/`, `/index`, `/home`], (req, res) =>
 {
     let html = `${html_template()}`;
     let body = ``;
+    let changelog = ``;
+
+    let lines = fs.readFileSync(`web/CHANGELOG.TXT`).toString().split(/\n/g);
+    let headers = 0;
+    for(line in lines)
+    {
+        if(lines[line].startsWith(`==`))
+        {
+            headers++;
+            if(headers >= 2) break;
+        }
+        changelog += `<a>${lines[line]}<a><br>`;
+    }
 
     body += `<div class="w3-container">`
         body += `<h1>Debugging.Games</h1>`
         body += `<h3>Your friendly repository filled with tons of applcation data!</h3>`
         body += `<p>\${TOTAL_SIZE} across \${TOTAL_FILES} files</p>`
         body += `<p>Binary data from \${TOTAL_SYSTEMS} different systems</p>`
+        body += `<br>`;
+        body += `<br>`;
+        body += `<h1>Changelog</h1>`;
+        body += `\${CHANGELOG}`;
     body += `</div>`
 
     body = body.replace(`\${TOTAL_SIZE}`, prettify_bytes(total_size));
     body = body.replace(`\${TOTAL_FILES}`, `${total_files}`);
     body = body.replace(`\${TOTAL_SYSTEMS}`, `${systems.length}`);
+    body = body.replace(`\${CHANGELOG}`, changelog);
     html = html.replace(`\${BODY}`, body);
 
     res.send(html);
@@ -201,7 +220,7 @@ http.get(`/systems/*`, (req, res) =>
     body += `</div>`;
 
     body += `<div class="w3-container">`;
-        body += `<ul class="w3-ul w3-border">`;
+        body += `<ul class="w3-ul w3-border-bottom">`;
             for(file in files)
             {
                 body += `<li class="w3-hover-white">`;
@@ -211,6 +230,40 @@ http.get(`/systems/*`, (req, res) =>
             }
         body += `</ul>`;
     body += `</div>`;
+
+    html = html.replace(`\${BODY}`, body);
+
+    res.send(html);
+});
+
+http.get([`/search`, `/search/`], (req, res) =>
+{
+    let html = `${html_template()}`;
+    let body = ``;
+
+    body += `<div class="w3-container">`;
+        body += `<h1>Search</h1>`;
+    body += `</div>`;
+
+    body += `<form class="w3-container">`;
+        body += `<p>`;
+            body += `<label style="padding-right:16px;">System</label>`;
+            body += `<select class="w3-select w3-dark-gray w3-border-0" style="width:200px;">`
+                body += `<option value="Any">Any</option>`;
+                for(system in systems)
+                {
+                    let systemName = decodeURI(systems[system].name);
+                    body += `<option value="${systems[system].name}">${systemName}</option>`;
+                }
+            body += `</select>`
+        body += `</p>`;
+
+        body += `<p>`;
+            body += `<label>Title/Keyword</label>`;
+            body += `<input class="w3-input w3-dark-gray w3-border-0" style="width:400px;" maxlength="128" type="text">`;
+        body += `</p>`;
+    body += `</form>`;
+    
 
     html = html.replace(`\${BODY}`, body);
 
