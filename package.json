@@ -17,6 +17,7 @@
   },
   "homepage": "https://github.com/debugging-games/frontend#readme",
   "dependencies": {
+    "express": "^4.18.2",
     "megajs": "^1.1.0"
   }
 }

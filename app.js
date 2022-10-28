@@ -1,11 +1,14 @@
-const http = require('http');
+const express = require('express')
+const http = express()
 const { File } = require(`megajs`);
+const fs = require(`fs`);
 
 let decryption_key = `YoUGWaXO_KSABy3zjBus7w`;
 const repo = File.fromURL(`https://mega.nz/folder/YGAjlICB#${decryption_key}/file/MTJH3KBb`);
 let root_children = [];
 let systems = [];
 let ready = false;
+
 
 function create_shareable(file)
 {
@@ -15,7 +18,12 @@ function create_shareable(file)
     return `https://mega.nz/folder/${folder}#${decryption_key}/${type}/${suffix}`;
 }
 
-(async function()
+function html_template()
+{
+    return fs.readFileSync(`web/template.html`);
+}
+
+function refresh_repo()
 {
     repo.loadAttributes((err, file) =>
     {
@@ -26,75 +34,44 @@ function create_shareable(file)
         }
         
         root_children = file.children;
-        root_children.sort((a, b) => 
+
+        for(child in root_children)
         {
-            if(a.directory)
+            if(root_children[child].directory)
             {
-                return a.name.localeCompare(b.name);
+                systems.push(root_children[child]);
             }
-        });
+        }
 
         ready = true;
     });
+}
 
-    http.createServer((req, res) =>
-    {
-        switch(req.method)
-        {
-            case `GET`:
-                
-                if(!ready)
-                {
-                    res.writeHead(200);
-                    res.end("Not ready...");
-                    return;
-                }
+http.listen(80, () =>
+{
+    refresh_repo();
+});
 
-                let total_files = 0;
-                let final = ``;
-                final += `<html>`;
-                final += `<head>`;
-                final += `<link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">`;
-                final += `</head>`;
+http.get([`/`, `/index`, `/home`], (req, res) =>
+{
+    res.send(`a`);
+});
 
-                final += `<h1> Total Files: \${TOTAL_FILES}`
+http.get(`/systems`, (req, res) =>
+{
+    let html = `${html_template()}`;
+    let body = ``;
 
-                final += `<ul>`;
-                for(child in root_children)
-                {
-                    final += `<li>`;
-                    if(root_children[child].directory)
-                    {
-                        final += `<a href="${create_shareable(root_children[child])}">${root_children[child].name}/</a>`;
+    body += `<div class="w3-container">`;
+        body += `<ul class="w3-ul w3-border">`;
+            for(system in systems)
+            {
+                body += `<li class="w3-hover-blue">${systems[system].name}</li>`;
+            }
+        body += `</ul>`;
+    body += `</div>`;
 
-                        final += `<ul>`;
-                        for(childChild in root_children[child].children)
-                        {
-                            if(!root_children[child].children[childChild].directory)
-                            {
-                                final += `<li>`;
-                                final += `<a href="${create_shareable(root_children[child].children[childChild])}">${root_children[child].children[childChild].name}/</a>`;
-                                final += `</li>`;
-                                total_files++;
-                            }
-                        }
-                        final += `</ul>`;
-                    }
-                    else
-                    {
-                        final += `<a href="${create_shareable(root_children[child])}">${root_children[child].name}</a>`;
-                        total_files++;
-                    }
-                    final += `</li>`;
-                }
-                final += `</ul>`;
-                final += `</html>`;
+    html = html.replace(`\${BODY}`, body);
 
-                final = final.replace("${TOTAL_FILES}", `${total_files}`);
-
-                res.writeHead(200);
-                res.end(final);
-                break;
-        }
-    }).listen(80, `0.0.0.0`);
-})();
+    res.send(html);
+});
