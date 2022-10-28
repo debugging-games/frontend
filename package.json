@@ -1,0 +1,22 @@
+{
+  "name": "frontend",
+  "version": "0.0.0",
+  "description": "Mega repository frontend for debugging.games",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/debugging-games/frontend.git"
+  },
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/debugging-games/frontend/issues"
+  },
+  "homepage": "https://github.com/debugging-games/frontend#readme",
+  "dependencies": {
+    "megajs": "^1.1.0"
+  }
+}
