@@ -9,6 +9,7 @@ let root_children = [];
 let systems = [];
 let total_size = 0;
 let total_files = 0;
+let cached_changelog = ``;
 
 let system_col_map = new Map();
 system_col_map.set("Gamecube", "w3-hover-deep-purple");
@@ -74,9 +75,65 @@ function html_template()
     return fs.readFileSync(`web/template.html`);
 }
 
+function get_changelog(latest)
+{
+    let changelog = ``;
+
+    if(latest)
+    {
+        let lines = fs.readFileSync(`web/CHANGELOG.TXT`).toString().split(/\n/g);
+        let headers = 0;
+        for(line in lines)
+        {
+            if(lines[line].startsWith(`==`))
+            {
+                headers++;
+                if(headers >= 2 && latest) break;
+            }
+            changelog += `<a>${lines[line]}<a><br>`
+        }
+    }
+    else
+    {
+        if(cached_changelog == ``)
+        {
+            let lines = fs.readFileSync(`web/CHANGELOG.TXT`).toString().split(/\n/g);
+            for(line in lines)
+            {
+                changelog += `<a>${lines[line]}<a><br>`
+            }
+            cached_changelog = changelog
+        }
+        else
+        {
+            changelog = cached_changelog;
+        }
+    }
+
+    return changelog;
+}
+
+function get_tag(tag, args)
+{
+	for(let i = 0; i < args.length; ++i)
+	{
+		let temp = args[i].split("=");
+		if (temp[0] == tag)
+		{
+			return temp[1];
+		}
+	}
+}
+
+async function refresh_changelog()
+{
+    let data = await root_children[child].downloadBuffer();
+    fs.writeFileSync(`web/CHANGELOG.TXT`, data.toString());
+}
+
 function refresh_repo()
 {
-    repo.loadAttributes((err, file) =>
+    repo.loadAttributes(async (err, file) =>
     {
         if(err)
         {
@@ -103,6 +160,11 @@ function refresh_repo()
             }
             else
             {
+                if(root_children[child].name.includes(`CHANGELOG`))
+                {
+                    await refresh_changelog();
+                }
+
                 total_size += root_children[child].size;
                 total_files++;
             }
@@ -114,6 +176,11 @@ function refresh_repo()
         });
 
         ready = true;
+
+        if(ready)
+        {
+            console.log(`Cache is ready!`);
+        }
     });
 }
 
@@ -126,29 +193,19 @@ http.get([`/`, `/index`, `/home`], (req, res) =>
 {
     let html = `${html_template()}`;
     let body = ``;
-    let changelog = ``;
-
-    let lines = fs.readFileSync(`web/CHANGELOG.TXT`).toString().split(/\n/g);
-    let headers = 0;
-    for(line in lines)
-    {
-        if(lines[line].startsWith(`==`))
-        {
-            headers++;
-            if(headers >= 2) break;
-        }
-        changelog += `<a>${lines[line]}<a><br>`;
-    }
+    let changelog = get_changelog(true);
 
     body += `<div class="w3-container">`
         body += `<h1>Debugging.Games</h1>`
         body += `<h3>Your friendly repository filled with tons of applcation data!</h3>`
         body += `<p>\${TOTAL_SIZE} across \${TOTAL_FILES} files</p>`
         body += `<p>Binary data from \${TOTAL_SYSTEMS} different systems</p>`
-        body += `<br>`;
-        body += `<br>`;
-        body += `<h1>Changelog</h1>`;
-        body += `\${CHANGELOG}`;
+        body += `<br>`
+        body += `<br>`
+        body += `<h1 style="display:inline-block;padding-right:16px">Changelog</h1>`
+        body += `<a href="/changelog" style="display:inline-block;font-size:12px;">View full changelog</a>`
+        body += `<br>`
+        body += `\${CHANGELOG}`
     body += `</div>`
 
     body = body.replace(`\${TOTAL_SIZE}`, prettify_bytes(total_size));
@@ -165,33 +222,43 @@ http.get(`/systems`, (req, res) =>
     let html = `${html_template()}`;
     let body = ``;
 
-    body += `<div class="w3-container">`;
-        body += `<h1>Systems</h1>`;
-    body += `</div>`;
+    body += `<div class="w3-container">`
+        body += `<h1>Systems</h1>`
+    body += `</div>`
 
-    body += `<div class="w3-container" style="width:300px;">`;
-        body += `<ul class="w3-ul w3-border">`;
-            for(system in systems)
-            {
-                let color = `class="`;
-                let found = ``;
-                system_col_map.forEach((value, key) =>
+    if(ready)
+    {
+        body += `<div class="w3-container" style="width:300px;">`
+            body += `<ul class="w3-ul w3-border">`
+                for(system in systems)
                 {
-                    if(systems[system].name == key)
+                    let color = `class="`
+                    let found = ``;
+                    system_col_map.forEach((value, key) =>
                     {
-                        found = value;
-                        return;
-                    }
-                });
-                
-                color += found != `` ? `${found}` : "w3-hover-white";
-                color += `"`;
+                        if(systems[system].name == key)
+                        {
+                            found = value;
+                            return;
+                        }
+                    });
+                    
+                    color += found != `` ? `${found}` : "w3-hover-white";
+                    color += `"`;
 
-                body += `<li ${color}> <a href="/systems/${systems[system].name}">${systems[system].name} </a> </li>`;
-                color = ``;
-            }
-        body += `</ul>`;
-    body += `</div>`;
+                    body += `<li ${color}> <a href="/systems/${systems[system].name}">${systems[system].name} </a> </li>`
+                    color = ``
+                }
+            body += `</ul>`
+        body += `</div>`
+    }
+    else
+    {
+        body += `<div class="w3-container">`
+            body += `<h2>Data has yet to be cached...</h2>`
+            body += `<p>Try again in a few seconds.</p>`
+        body += `</div>`
+    }
 
     html = html.replace(`\${BODY}`, body);
 
@@ -215,57 +282,174 @@ http.get(`/systems/*`, (req, res) =>
 
     files = systems[sysIndex].children;
 
-    body += `<div class="w3-container">`;
-        body += `<h1>${system}</h1>`;
-    body += `</div>`;
+    body += `<div class="w3-container">`
+        body += `<h1>${system}</h1>`
+    body += `</div>`
 
-    body += `<div class="w3-container">`;
-        body += `<ul class="w3-ul w3-border-bottom">`;
+    body += `<div class="w3-container">`
+        body += `<ul class="w3-ul w3-border-bottom">`
             for(file in files)
             {
-                body += `<li class="w3-hover-white">`;
-                body += `<a href="${create_shareable(files[file])}" style="display:inline;">${files[file].name}</a>`;
-                body += `<a class="w3-right" style="display:inline;">${prettify_bytes(files[file].size)}</a>`;
-                body += `</li>`;
+                body += `<li class="w3-hover-white">`
+                body += `<a href="${create_shareable(files[file])}" style="display:inline;">${files[file].name}</a>`
+                body += `<a class="w3-right" style="display:inline;">${prettify_bytes(files[file].size)}</a>`
+                body += `</li>`
             }
-        body += `</ul>`;
-    body += `</div>`;
+        body += `</ul>`
+    body += `</div>`
 
     html = html.replace(`\${BODY}`, body);
 
     res.send(html);
 });
 
-http.get([`/search`, `/search/`], (req, res) =>
+http.get('/search', (req, res) =>
+{
+    let html = `${html_template()}`;
+    let body = ``;
+    let args = [];
+
+    if(req.url.split('?').length > 1)
+    {
+        args = req.url.split('?')[1].split('&');
+    }
+
+    body += `<div class="w3-container">`
+        body += `<h1>Search</h1>`
+    body += `</div>`
+
+    if(ready && args.length <= 0)
+    {
+        body += `<form class="w3-container" action="/search">`
+
+            body += `<label style="padding-right:16px;" for="system">System</label>`
+            body += `<select class="w3-select w3-dark-gray w3-border-0" style="width:200px;" id="system" name="system">`
+                body += `<option value="Any">Any</option>`
+                for(system in systems)
+                {
+                    let systemName = decodeURI(systems[system].name);
+                    body += `<option value="${systems[system].name}">${systemName}</option>`
+                }
+            body += `</select>`
+
+            body += `<br>`
+            body += `<br>`
+            
+            body += `<label style="padding-right:16px;" for="keywords">Title/Keyword</label>`
+            body += `<input class="w3-input w3-dark-gray w3-border-0" style="width:400px;" maxlength="128" minlength="1" type="text" autocomplete="off" id="keywords" name="keywords">`
+
+            body += `<br>`
+            
+            body += `<input class="w3-btn w3-dark-gray" type="submit" value="Search"></input>`
+
+        body += `</form>`
+    }
+    else if(ready && args.length > 0)
+    {
+        let system = decodeURI(get_tag(`system`, args));
+        let keywords = decodeURI(get_tag(`keywords`, args)).replace(/\+/g, ` `);
+
+        if(keywords == undefined || keywords == `` || keywords.length <= 0)
+        {
+            body += `<div class="w3-container">`
+                body += `<h2>Error</h2>`
+                body += `<p>Search must contain at least 1 character!</p>`
+            body += `</div>`
+        }
+        else
+        {
+            body += `<div class="w3-container">`
+                body += `<h2>${system} : ${keywords}</h2>`
+            body += `</div>`
+
+            if(system == "Any")
+            {
+                body += `<div class="w3-container">`
+                    body += `<ul class="w3-ul w3-border-bottom">`
+                    for(child in root_children)
+                    {
+                        if(root_children[child].directory)
+                        {
+                            for(childChild in root_children[child].children)
+                            {
+                                if(root_children[child].children[childChild].name.toLowerCase().includes(keywords.toLowerCase()))
+                                {
+                                    body += `<li>`
+                                    body += `<a>${root_children[child].children[childChild].name}</a>`;
+                                    body += `</li>`
+                                }
+                            }
+                        }
+                    }
+                    body += `</ul>`
+                body += `</div>`
+            }
+            else
+            {
+                body += `<div class="w3-container">`
+                    body += `<ul class="w3-ul w3-border-bottom">`
+                    for(child in root_children)
+                    {
+                        if(root_children[child].name == system && root_children[child].directory)
+                        {
+                            for(childChild in root_children[child].children)
+                            {
+                                if(root_children[child].children[childChild].name.toLowerCase().includes(keywords.toLowerCase()))
+                                {
+                                    body += `<li>`
+                                    body += `<a>${root_children[child].children[childChild].name}</a>`;
+                                    body += `</li>`
+                                }
+                            }
+                        }
+                    }
+                    body += `</ul>`
+                body += `</div>`
+            }
+        }
+    }
+    else
+    {
+        body += `<div class="w3-container">`
+            body += `<h2>Data has yet to be cached...</h2>`
+            body += `<p>Try again in a few seconds.</p>`
+        body += `</div>`
+    }
+
+    html = html.replace(`\${BODY}`, body);
+
+    res.send(html);
+});
+
+http.get([`/changelog`, `/changelog/`], (req, res) =>
+{
+    let html = `${html_template()}`;
+    let body = ``;
+    let changelog = get_changelog(false);
+
+    body += `<div class="w3-container">`
+        body += `<h1>Changelog</h1>`
+    body += `</div>`
+
+    body += `${changelog}`
+
+    html = html.replace(`\${BODY}`, body);
+
+    res.send(html);
+});
+
+http.use((req, res) =>
 {
     let html = `${html_template()}`;
     let body = ``;
 
-    body += `<div class="w3-container">`;
-        body += `<h1>Search</h1>`;
-    body += `</div>`;
-
-    body += `<form class="w3-container">`;
-        body += `<p>`;
-            body += `<label style="padding-right:16px;">System</label>`;
-            body += `<select class="w3-select w3-dark-gray w3-border-0" style="width:200px;">`
-                body += `<option value="Any">Any</option>`;
-                for(system in systems)
-                {
-                    let systemName = decodeURI(systems[system].name);
-                    body += `<option value="${systems[system].name}">${systemName}</option>`;
-                }
-            body += `</select>`
-        body += `</p>`;
-
-        body += `<p>`;
-            body += `<label>Title/Keyword</label>`;
-            body += `<input class="w3-input w3-dark-gray w3-border-0" style="width:400px;" maxlength="128" type="text">`;
-        body += `</p>`;
-    body += `</form>`;
-    
+    body += `<div class="w3-container">`
+        body += `<h1>404</h1>`;
+        body += `<p>The symbols are in another castle!</p>`;
+    body += `</div>`
 
     html = html.replace(`\${BODY}`, body);
 
+    res.status(404);
     res.send(html);
 });
