@@ -79,6 +79,7 @@ function get_changelog(latest)
 {
     let changelog = ``;
 
+    changelog += `<div class="w3-container">`
     if(latest)
     {
         let lines = fs.readFileSync(`web/CHANGELOG.TXT`).toString().split(/\n/g);
@@ -88,9 +89,10 @@ function get_changelog(latest)
             if(lines[line].startsWith(`==`))
             {
                 headers++;
+                changelog += `</br>`
                 if(headers >= 2 && latest) break;
             }
-            changelog += `<a>${lines[line]}<a><br>`
+            changelog += `<p>${lines[line]}</p>`
         }
     }
     else
@@ -100,7 +102,12 @@ function get_changelog(latest)
             let lines = fs.readFileSync(`web/CHANGELOG.TXT`).toString().split(/\n/g);
             for(line in lines)
             {
-                changelog += `<a>${lines[line]}<a><br>`
+                if(lines[line].startsWith(`==`))
+                {
+                    changelog += `</br>`
+                }
+
+                changelog += `<p>${lines[line]}</p>`
             }
             cached_changelog = changelog
         }
@@ -109,7 +116,7 @@ function get_changelog(latest)
             changelog = cached_changelog;
         }
     }
-
+    changelog += `</div>`
     return changelog;
 }
 
@@ -125,6 +132,31 @@ function get_tag(tag, args)
 	}
 }
 
+function enumerate_directory(files)
+{
+    let body = ``;
+    for(file in files)
+    {
+        body += `<li class="w3-hover-white">`
+        body += `<a href="${create_shareable(files[file])}" style="display:inline;">${files[file].name.includes(`.7z`) ? files[file].name.slice(0, -3) : files[file].name}</a>`
+        body += `<a class="w3-right" style="display:inline;">${prettify_bytes(files[file].size)}</a>`
+        body += `</li>`
+    }
+    return body;
+}
+
+function not_ready()
+{
+    let body = ``;
+
+    body += `<div class="w3-container">`
+        body += `<h2>Data has yet to be cached...</h2>`
+        body += `<p>Try again in a few seconds.</p>`
+    body += `</div>`
+
+    return body;
+}
+
 async function refresh_changelog()
 {
     let data = await root_children[child].downloadBuffer();
@@ -133,6 +165,12 @@ async function refresh_changelog()
 
 function refresh_repo()
 {
+    root_children = [];
+    systems = [];
+    total_size = 0;
+    total_files = 0;
+    cached_changelog = ``;
+
     repo.loadAttributes(async (err, file) =>
     {
         if(err)
@@ -181,6 +219,12 @@ function refresh_repo()
         {
             console.log(`Cache is ready!`);
         }
+        else
+        {
+            console.log(`Cache failed to load!`);
+        }
+
+        setTimeout(refresh_repo, (1000 * 60) * 60);
     });
 }
 
@@ -199,7 +243,7 @@ http.get([`/`, `/index`, `/home`], (req, res) =>
         body += `<h1>Debugging.Games</h1>`
         body += `<h3>Your friendly repository filled with tons of applcation data!</h3>`
         body += `<p>\${TOTAL_SIZE} across \${TOTAL_FILES} files</p>`
-        body += `<p>Binary data from \${TOTAL_SYSTEMS} different systems</p>`
+        body += `<p>Binary data from <a href="/systems">\${TOTAL_SYSTEMS} different systems</a></p>`
         body += `<br>`
         body += `<br>`
         body += `<h1 style="display:inline-block;padding-right:16px">Changelog</h1>`
@@ -254,10 +298,7 @@ http.get(`/systems`, (req, res) =>
     }
     else
     {
-        body += `<div class="w3-container">`
-            body += `<h2>Data has yet to be cached...</h2>`
-            body += `<p>Try again in a few seconds.</p>`
-        body += `</div>`
+        body += not_ready();
     }
 
     html = html.replace(`\${BODY}`, body);
@@ -279,25 +320,19 @@ http.get(`/systems/*`, (req, res) =>
     let files = [];
     let html = `${html_template()}`;
     let body = ``;
-
     files = systems[sysIndex].children;
 
     body += `<div class="w3-container">`
-        body += `<h1>${system}</h1>`
+        body += `<h1>${system} (\${ENTRIES} entires)</h1>`
     body += `</div>`
 
     body += `<div class="w3-container">`
         body += `<ul class="w3-ul w3-border-bottom">`
-            for(file in files)
-            {
-                body += `<li class="w3-hover-white">`
-                body += `<a href="${create_shareable(files[file])}" style="display:inline;">${files[file].name}</a>`
-                body += `<a class="w3-right" style="display:inline;">${prettify_bytes(files[file].size)}</a>`
-                body += `</li>`
-            }
+            body += enumerate_directory(files);
         body += `</ul>`
     body += `</div>`
 
+    body = body.replace(`\${ENTRIES}`, `${files.length}`);
     html = html.replace(`\${BODY}`, body);
 
     res.send(html);
@@ -308,6 +343,7 @@ http.get('/search', (req, res) =>
     let html = `${html_template()}`;
     let body = ``;
     let args = [];
+    let entires = 0;
 
     if(req.url.split('?').length > 1)
     {
@@ -359,7 +395,7 @@ http.get('/search', (req, res) =>
         else
         {
             body += `<div class="w3-container">`
-                body += `<h2>${system} : ${keywords}</h2>`
+                body += `<h2>${system} : ${keywords} (\${ENTIRES} entires)</h2>`
             body += `</div>`
 
             if(system == "Any")
@@ -374,9 +410,11 @@ http.get('/search', (req, res) =>
                             {
                                 if(root_children[child].children[childChild].name.toLowerCase().includes(keywords.toLowerCase()))
                                 {
-                                    body += `<li>`
-                                    body += `<a>${root_children[child].children[childChild].name}</a>`;
+                                    body += `<li class="w3-hover-white">`
+                                    body += `<a href="${create_shareable(root_children[child].children[childChild])}" style="display:inline;">${root_children[child].children[childChild].name.includes(`.7z`) ? root_children[child].children[childChild].name.slice(0, -3) : root_children[child].children[childChild].name}</a>`
+                                    body += `<a class="w3-right" style="display:inline;">${prettify_bytes(root_children[child].children[childChild].size)}</a>`
                                     body += `</li>`
+                                    ++entires;
                                 }
                             }
                         }
@@ -396,9 +434,11 @@ http.get('/search', (req, res) =>
                             {
                                 if(root_children[child].children[childChild].name.toLowerCase().includes(keywords.toLowerCase()))
                                 {
-                                    body += `<li>`
-                                    body += `<a>${root_children[child].children[childChild].name}</a>`;
+                                    body += `<li class="w3-hover-white">`
+                                    body += `<a href="${create_shareable(root_children[child].children[childChild])}" style="display:inline;">${root_children[child].children[childChild].name.includes(`.7z`) ? root_children[child].children[childChild].name.slice(0, -3) : root_children[child].children[childChild].name}</a>`
+                                    body += `<a class="w3-right" style="display:inline;">${prettify_bytes(root_children[child].children[childChild].size)}</a>`
                                     body += `</li>`
+                                    ++entires;
                                 }
                             }
                         }
@@ -407,13 +447,12 @@ http.get('/search', (req, res) =>
                 body += `</div>`
             }
         }
+
+        body = body.replace(`\${ENTIRES}`, `${entires}`);
     }
     else
     {
-        body += `<div class="w3-container">`
-            body += `<h2>Data has yet to be cached...</h2>`
-            body += `<p>Try again in a few seconds.</p>`
-        body += `</div>`
+        body += not_ready();
     }
 
     html = html.replace(`\${BODY}`, body);
@@ -432,6 +471,58 @@ http.get([`/changelog`, `/changelog/`], (req, res) =>
     body += `</div>`
 
     body += `${changelog}`
+
+    html = html.replace(`\${BODY}`, body);
+
+    res.send(html);
+});
+
+http.get([`/contribute`, `/contribute/`], (req, res) =>
+{
+    let html = `${html_template()}`;
+    let body = ``;
+    
+    body += `<div class="w3-container">`
+        body += `<h1>Contribute</h1>`
+    body += `</div>`
+
+    body += `<div class="w3-container">`
+
+        body += `<h3>- Found some neat symbols and want to submit them to the repo?</h3>`
+        body += `<p>`
+            body += `: Contributions can be submitted either through the <a href="https://discord.gg/QH3qqDMjKx" style="text-decoration:underline;">discord</a> in the #submissions channel `
+            body += `or anonymously through the <a href="https://mega.nz/megadrop/xZX7TVhGKmw" style="text-decoration:underline;">MEGAdrop</a>`
+        body += `</p>`
+
+        body += `<br>`
+
+        body += `<h3>- Noticed an error that we embarassingly didn't?</h3>`
+        body += `<p>`
+            body += `: Edits can be documented through the <a href="https://discord.gg/QH3qqDMjKx" style="text-decoration:underline;">discord</a> in the #errata-reporting channel. `
+            body += `there is currently no anonymous solution, sorry!`
+        body += `</p>`
+
+        body += `<br>`
+
+        body += `<h3>- Want to know how to find debug symbols?</h3>`
+        body += `<p>`
+            body += `Windows : Some developers will forget to remove their .pdb files from their release builds. `
+            body += `Anyone can easily go to their application directory and notice if a pdb exists because usually its right next to the main exe file.`
+            body += `<br>`
+            body += `If you don't immediately see a .pdb file, you can do a quick search of "*.pdb" in the applications's directory`
+            body += `<br>`
+            body += `A more rare but potentially possible file to find are "*.map" files`
+            body += `<br>`
+            body += `Some exes themselves will also contain debug symbols if the develop forgot to strip the debug information when compiling!`
+            body += `<br>`
+            body += `<br>`
+            body += `Linux : TODO`
+            body += `<br>`
+            body += `<br>`
+            body += `Mac : TODO`
+        body += `</p>`
+
+    body += `</div>`
 
     html = html.replace(`\${BODY}`, body);
 
