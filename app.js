@@ -499,7 +499,7 @@ http.get([`/contribute`, `/contribute/`], (req, res) =>
         body += `<h3>- Noticed an error that we embarassingly didn't?</h3>`
         body += `<p>`
             body += `: Edits can be documented through the <a href="https://discord.gg/QH3qqDMjKx" style="text-decoration:underline;">discord</a> in the #errata-reporting channel. `
-            body += `there is currently no anonymous solution, sorry!`
+            body += `There is currently no anonymous solution, sorry!`
         body += `</p>`
 
         body += `<br>`
